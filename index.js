@@ -12,7 +12,8 @@ app.use(cors());
 app.use(express.json());
 
 
-const stripe = stripe(process.env.STRIPE_SECRET_KEY);
+// const stripe = stripe(process.env.PAYMENT_GATEWAY_KEY);
+const stripe = require('stripe')(process.env.PAYMENT_GATEWAY_KEY);
 
 
 
