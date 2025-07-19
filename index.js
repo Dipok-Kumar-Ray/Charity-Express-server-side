@@ -11,6 +11,11 @@ dotenv.config();
 app.use(cors());
 app.use(express.json());
 
+
+const stripe = stripe(process.env.STRIPE_SECRET_KEY);
+
+
+
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.oclat4d.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -27,8 +32,9 @@ async function run() {
     // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
 
-    //Donations Collection
     const db = client.db("CharityEx_DB");
+
+    //Donations Collection
     const donationCollection = db.collection("donations");
 
     //reviews collecitons
@@ -37,8 +43,88 @@ async function run() {
     //favourites collecitons
     const favoritesCollection = db.collection("favorites");
 
+    //dashboard transactions history
+    const transactionsCollection = db.collection("transactions");
+
+//stripe transaction
+// POST: Create Checkout Session
+app.post("/create-checkout-session", async (req, res) => {
+  const { name, email, organization } = req.body;
+
+  if (!name || !email || !organization) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
+
+  try {
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      mode: "payment",
+      customer_email: email,
+      line_items: [
+        {
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: "Charity Role Activation",
+              description: `For organization: ${organization}`,
+            },
+            unit_amount: 500, // $5.00
+          },
+          quantity: 1,
+        },
+      ],
+      success_url: "http://localhost:5173/success",
+      cancel_url: "http://localhost:5173/cancel",
+    });
+
+    res.json({ id: session.id });
+  } catch (error) {
+    console.error("Stripe Session Error:", error);
+    res.status(500).json({ error: "Failed to create checkout session" });
+  }
+});
+
+
+
+    //dashboard transactions
+    app.get("/transactions", async (req, res) => {
+  const email = req.query.email;
+  const result = await transactionsCollection.find({ email }).toArray();
+  res.send(result);
+});
+
+
+    //dashboard reviews
+    app.get("/reviews", async (req, res) => {
+  const email = req.query.email;
+  const result = await reviewCollection.find({ email }).toArray();
+  res.send(result);
+});
+
+app.delete("/reviews/:id", async (req, res) => {
+  const id = req.params.id;
+  const result = await reviewCollection.deleteOne({ _id: new ObjectId(id) });
+  res.send(result);
+});
+
+
+
+
+    //dashboard favorite
+    app.get("/favorites", async(req, res) => {
+      const email = req.query.email;
+      const result = await favoritesCollection.find({email}).toArray();
+      res.send(result);
+    })
+    app.delete("/favorites/:id", async (req, res) => {
+  const id = req.params.id;
+  const result = await favoritesCollection.deleteOne({ _id: new ObjectId(id) });
+  res.send(result);
+});
+
+
     //reviews
-    // ✅ 1. GET reviews for a specific donation
+    //  GET reviews for a specific donation
     app.get("/reviews/:donationId", async (req, res) => {
       try {
         const { donationId } = req.params;
@@ -53,7 +139,7 @@ async function run() {
       }
     });
 
-    // ✅ 2. POST a new review
+    //  POST a new review
     app.post("/reviews", async (req, res) => {
       try {
         const review = req.body;
@@ -66,7 +152,7 @@ async function run() {
       }
     });
 
-    // ✅ 3. DELETE a review by ID
+    //  DELETE a review by ID
     app.delete("/reviews/:id", async (req, res) => {
       try {
         const { id } = req.params;
@@ -99,6 +185,15 @@ async function run() {
         res.status(500).json({ message: "Server error", error: error.message });
       }
     });
+
+
+    //donations added
+    app.post("/donations", async (req, res) => {
+  const donation = req.body;
+  const result = await donationCollection.insertOne(donation);
+  res.send(result);
+});
+
 
     //donations getting
     app.get("/donations", async (req, res) => {
