@@ -231,6 +231,25 @@ app.get("/transactions", async (req, res) => {
 
 
             //RESTAURANT ROLE START
+
+//restaurant role only
+app.get("/users/:email", async (req, res) => {
+  const email = req.params.email;
+  const user = await usersCollection.findOne({ email });
+  res.send({ role: user?.role || "user" });
+});
+
+// Add new donation
+app.post("/donations", async (req, res) => {
+  const donation = req.body;
+  // Default status set as Pending
+  donation.status = "Pending";
+  donation.createdAt = new Date();
+
+  const result = await donationsCollection.insertOne(donation);
+  res.send(result);
+});
+
 //My donations
 app.get("/donations", async (req, res) => {
   const email = req.query.email;
@@ -280,31 +299,49 @@ app.get("/requests", async (req, res) => {
 //accept and reject a requested
 app.patch("/requests/:id", async (req, res) => {
   const id = req.params.id;
-  const { action, donationId } = req.body;
+  const { status, donationId } = req.body; // status = "Accepted" or "Rejected"
 
-  const updateCurrent = await requestsCollection.updateOne(
+  // Update this request
+  const result = await requestsCollection.updateOne(
     { _id: new ObjectId(id) },
-    { $set: { status: action } }
+    { $set: { status } }
   );
 
-  // If accepted, reject others for same donation
-  if (action === "Accepted") {
+  // If accepted, auto-reject all other requests for same donation
+  if (status === "Accepted") {
     await requestsCollection.updateMany(
-      {
-        _id: { $ne: new ObjectId(id) },
-        donationId: donationId,
-      },
+      { donationId: donationId, _id: { $ne: new ObjectId(id) } },
       { $set: { status: "Rejected" } }
     );
   }
 
-  res.send(updateCurrent);
+  res.send(result);
 });
 
+            //role verifytoken
+const verifyRestaurant = async (req, res, next) => {
+  const email = req.decoded.email;
+  const user = await usersCollection.findOne({ email });
+  if (user?.role !== "restaurant") {
+    return res.status(403).send({ message: "forbidden access" });
+  }
+  next();
+};
+
+// Example protected route
+app.post("/donations", verifyJWT, verifyRestaurant, async (req, res) => {
+  const donation = req.body;
+  donation.status = "Pending";
+  donation.createdAt = new Date();
+  const result = await donationsCollection.insertOne(donation);
+  res.send(result);
+});
 
 
             
             //RESTAURANT ROLE END
+
+
 
 
     //getting all role
@@ -348,19 +385,6 @@ app.patch("/updateRole/:id", async (req, res) => {
     console.error("Update role error:", err);
     res.status(500).json({ message: "Server error" });
   }
-});
-
-
-
-// Add new donation
-app.post("/donations", async (req, res) => {
-  const donation = req.body;
-  // Default status set as Pending
-  donation.status = "Pending";
-  donation.createdAt = new Date();
-
-  const result = await donationsCollection.insertOne(donation);
-  res.send(result);
 });
 
 
