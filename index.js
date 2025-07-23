@@ -50,6 +50,15 @@ async function run() {
 
     const usersCollection = db.collection("users");
 
+    //requests colletions
+    const requestsCollection = db.collection("requests");
+
+    //charity requestsCollections
+    const charityRequestsCollection = db.collection("charity-request-status");
+
+
+
+
             //ADMIN AQCUISTIIONS START
 
 
@@ -222,7 +231,75 @@ app.get("/transactions", async (req, res) => {
 
 
             //RESTAURANT ROLE START
+//My donations
+app.get("/donations", async (req, res) => {
+  const email = req.query.email;
+  const result = await donationsCollection.find({ restaurantEmail: email }).toArray();
+  res.send(result);
+});
 
+//donations delete
+app.delete("/donations/:id", async (req, res) => {
+  const id = req.params.id;
+  const result = await donationsCollection.deleteOne({ _id: new ObjectId(id) });
+  res.send(result);
+});
+
+//donations update
+app.patch("/donations/:id", async (req, res) => {
+  const id = req.params.id;
+  const updatedData = req.body;
+
+  const result = await donationsCollection.updateOne(
+    { _id: new ObjectId(id) },
+    {
+      $set: {
+        title: updatedData.title,
+        foodType: updatedData.foodType,
+        quantity: updatedData.quantity,
+        pickupTime: updatedData.pickupTime,
+        location: updatedData.location,
+        image: updatedData.image,
+      },
+    }
+  );
+
+  res.send(result);
+});
+
+
+
+//request for restaurant donations
+app.get("/requests", async (req, res) => {
+  const email = req.query.email;
+  const result = await requestsCollection.find({ restaurantEmail: email }).toArray();
+  res.send(result);
+});
+
+
+//accept and reject a requested
+app.patch("/requests/:id", async (req, res) => {
+  const id = req.params.id;
+  const { action, donationId } = req.body;
+
+  const updateCurrent = await requestsCollection.updateOne(
+    { _id: new ObjectId(id) },
+    { $set: { status: action } }
+  );
+
+  // If accepted, reject others for same donation
+  if (action === "Accepted") {
+    await requestsCollection.updateMany(
+      {
+        _id: { $ne: new ObjectId(id) },
+        donationId: donationId,
+      },
+      { $set: { status: "Rejected" } }
+    );
+  }
+
+  res.send(updateCurrent);
+});
 
 
 
@@ -275,12 +352,17 @@ app.patch("/updateRole/:id", async (req, res) => {
 
 
 
-    //donations added
-    app.post("/donations", async (req, res) => {
-      const donation = req.body;
-      const result = await donationsCollection.insertOne(donation);
-      res.send(result);
-    });
+// Add new donation
+app.post("/donations", async (req, res) => {
+  const donation = req.body;
+  // Default status set as Pending
+  donation.status = "Pending";
+  donation.createdAt = new Date();
+
+  const result = await donationsCollection.insertOne(donation);
+  res.send(result);
+});
+
 
     //donations getting
     app.get("/donations", async (req, res) => {
