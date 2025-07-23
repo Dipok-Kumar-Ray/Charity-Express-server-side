@@ -4,6 +4,7 @@ const dotenv = require("dotenv");
 const app = express();
 const port = process.env.PORT || 3000;
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const jwt = require("jsonwebtoken");
 
 dotenv.config();
 
@@ -15,6 +16,25 @@ app.use(express.json());
 const stripe = require("stripe")(process.env.PAYMENT_GATEWAY_KEY);
 
 // const stripe = require("stripe")(process.env.PAYMENT_GATEWAY_KEY);
+
+
+// JWT Verify Middleware
+
+const verifyJWT = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).send({ message: "Unauthorized access" });
+  }
+
+  const token = authHeader.split(" ")[1];
+  jwt.verify(token, process.env.JWT_SECRET_KEY, (err, decoded) => {
+    if (err) {
+      return res.status(403).send({ message: "Forbidden access" });
+    }
+    req.decoded = decoded;
+    next();
+  });
+};
 
 
 
@@ -56,10 +76,33 @@ async function run() {
     //charity requestsCollections
     const charityRequestsCollection = db.collection("charity-request-status");
 
+    //charity collections
+    const charityCollection = db.collection("charity");
 
 
 
-            //ADMIN AQCUISTIIONS START
+    // middleware
+const verifyJWT = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).send({ message: "Unauthorized access" });
+  }
+
+  const token = authHeader.split(" ")[1];
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(403).send({ message: "Forbidden access" });
+    }
+    req.decoded = decoded;
+    next();
+  });
+};
+
+            //ADMIN ROLE START
+
+
+
+
 
 
 // Get all charity requests (Admin only)
@@ -98,7 +141,61 @@ app.patch("/admin/charity-requests/:id", async (req, res) => {
 
 
 
-            //CHARITY  AQCUISITONS START
+            //CHARITY ROLE START
+
+// Charity Profile Route (Read Only)
+app.get("/charity/profile", async (req, res) => {
+  try {
+    const email = req.query.email;
+    if (!email) return res.status(400).send({ message: "Email required" });
+
+    // charityCollection তৈরি করো (MongoDB তে)
+    const charityCollection = client.db("eduHive").collection("charities");
+
+    // নির্দিষ্ট charity profile খুঁজে বের করো
+    const charityProfile = await charityCollection.findOne({ email });
+
+    // যদি না পাও তাহলে empty পাঠাবে
+    res.send(charityProfile || {});
+  } catch (error) {
+    console.error("Error fetching charity profile:", error);
+    res.status(500).send({ message: "Server error", error });
+  }
+});
+
+
+// Get all charity requests by email
+app.get("/charity/requests", async (req, res) => {
+  const email = req.query.email;
+  console.log("Received email:", email);
+  try {
+    const allData = await charityRequestsCollection.find({}).toArray();
+    console.log("All charity requests data:", allData);
+
+    const result = await charityRequestsCollection
+      .find({ email: { $regex: new RegExp(`^${email}$`, "i") } })
+      .toArray();
+    console.log("Filtered requests:", result);
+
+    res.send(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ error: "Internal Server Error" });
+  }
+});
+
+
+
+
+// Cancel (delete) request
+app.delete("/charity/requests/:id", async (req, res) => {
+  const id = req.params.id;
+  const query = { _id: new ObjectId(id) };
+  const result = await charityRequestsCollection.deleteOne(query);
+  res.send(result);
+});
+
+
 
 
     // POST /charity-request
@@ -240,15 +337,17 @@ app.get("/users/:email", async (req, res) => {
 });
 
 // Add new donation
-app.post("/donations", async (req, res) => {
+
+
+// Example protected route (donations)
+app.post("/donations", verifyJWT, verifyRestaurant, async (req, res) => {
   const donation = req.body;
-  // Default status set as Pending
   donation.status = "Pending";
   donation.createdAt = new Date();
-
   const result = await donationsCollection.insertOne(donation);
   res.send(result);
 });
+
 
 //My donations
 app.get("/donations", async (req, res) => {
