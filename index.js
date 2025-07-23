@@ -14,6 +14,10 @@ app.use(express.json());
 // const stripe = stripe(process.env.PAYMENT_GATEWAY_KEY);
 const stripe = require("stripe")(process.env.PAYMENT_GATEWAY_KEY);
 
+// const stripe = require("stripe")(process.env.PAYMENT_GATEWAY_KEY);
+
+
+
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.oclat4d.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -33,10 +37,10 @@ async function run() {
     const db = client.db("CharityEx_DB");
 
     //Donations Collection
-    const donationCollection = db.collection("donations");
+    const donationsCollection = db.collection("donations");
 
     //reviews collecitons
-    const reviewCollection = db.collection("reviews");
+    const reviewsCollection = db.collection("reviews");
 
     //favourites collecitons
     const favoritesCollection = db.collection("favorites");
@@ -46,6 +50,185 @@ async function run() {
 
     const usersCollection = db.collection("users");
 
+            //ADMIN AQCUISTIIONS START
+
+
+// Get all charity requests (Admin only)
+app.get("/admin/charity-requests", async (req, res) => {
+  const result = await charityRequestsCollection.find().sort({ date: -1 }).toArray();
+  res.send(result);
+});
+
+
+// Update status of a charity request
+app.patch("/admin/charity-requests/:id", async (req, res) => {
+  const id = req.params.id;
+  const { status } = req.body;
+
+  const result = await charityRequestsCollection.updateOne(
+    { _id: new ObjectId(id) },
+    { $set: { status } }
+  );
+
+  // update transaction status as well
+  const request = await charityRequestsCollection.findOne({ _id: new ObjectId(id) });
+
+  if (request) {
+    await transactionsCollection.updateOne(
+      { transactionId: request.transactionId },
+      { $set: { status } }
+    );
+  }
+
+  res.send(result);
+});
+
+
+            //ADMIN AQCUISTIIONS END
+
+
+
+
+            //CHARITY  AQCUISITONS START
+
+
+    // POST /charity-request
+app.post("/charity-request", async (req, res) => {
+  const { name, email, orgName, mission, transactionId } = req.body;
+
+  if (!name || !email || !orgName || !mission || !transactionId) {
+    return res.status(400).send({ message: "All fields are required" });
+  }
+
+  const exists = await charityRequestsCollection.findOne({
+    email,
+    status: { $in: ["Pending", "Approved"] },
+  });
+
+  if (exists) {
+    return res.status(400).send({ message: "Request already submitted or approved" });
+  }
+
+  // Insert into charityRequests
+  const charityRequest = {
+    name,
+    email,
+    orgName,
+    mission,
+    transactionId,
+    status: "Pending",
+    date: new Date(),
+  };
+  await charityRequestsCollection.insertOne(charityRequest);
+
+  // Insert into transactions
+  const transaction = {
+    transactionId,
+    email,
+    amount: 25,
+    date: new Date(),
+    purpose: "Charity Role Request",
+    status: "Pending",
+  };
+  await transactionsCollection.insertOne(transaction);
+
+  res.send({ success: true });
+});
+
+
+app.get("/charity-request-status", async (req, res) => {
+  const email = req.query.email;
+  const result = await charityRequestsCollection.findOne({
+    email,
+    status: { $in: ["Pending", "Approved"] },
+  });
+
+  res.send({ exists: !!result });
+});
+
+
+
+// POST /create-payment-intent
+app.post("/create-payment-intent", async (req, res) => {
+  const { amount } = req.body;
+
+  const paymentIntent = await stripe.paymentIntents.create({
+    amount: amount * 100, // Stripe uses cents
+    currency: "usd",
+    payment_method_types: ["card"],
+  });
+
+  res.send({ clientSecret: paymentIntent.client_secret });
+});
+
+
+// GET /transactions?email=user@example.com
+app.get("/transactions", async (req, res) => {
+  const email = req.query.email;
+  const result = await transactionsCollection
+    .find({ email })
+    .sort({ date: -1 })
+    .toArray();
+  res.send(result);
+});
+
+
+// GET /favorites?email=
+app.get("/favorites", async (req, res) => {
+  const email = req.query.email;
+  if (!email) return res.status(400).send({ message: "Email is required" });
+
+  const favorites = await favoritesCollection.find({ email }).toArray();
+  res.send(favorites);
+});
+
+// DELETE /favorites/:id
+app.delete("/favorites/:id", async (req, res) => {
+  const id = req.params.id;
+  const result = await favoritesCollection.deleteOne({ _id: new ObjectId(id) });
+  res.send(result);
+});
+
+//reviews email id
+app.get("/reviews", async (req, res) => {
+  const email = req.query.email;
+  if (!email) return res.status(400).send({ message: "Email is required" });
+
+  const reviews = await reviewsCollection.find({ email }).toArray();
+  res.send(reviews);
+});
+
+//reviews delete
+app.delete("/reviews/:id", async (req, res) => {
+  const id = req.params.id;
+  const result = await reviewsCollection.deleteOne({ _id: new ObjectId(id) });
+  res.send(result);
+});
+
+
+//transactions email id
+app.get("/transactions", async (req, res) => {
+  const email = req.query.email;
+  if (!email) return res.status(400).send({ message: "Email is required" });
+
+  const transactions = await transactionsCollection
+    .find({ email })
+    .sort({ date: -1 })
+    .toArray();
+  res.send(transactions);
+});
+
+            //CHARITY AQCUISITIONS END
+
+
+            //RESTAURANT ROLE START
+
+
+
+
+            
+            //RESTAURANT ROLE END
+
 
     //getting all role
     app.get('/users/role', async(req, res) => {
@@ -53,9 +236,6 @@ async function run() {
       const user = await usersCollection.findOne({email});
       res.send(user);
     })
-
-
-
 
     app.post("/users", async (req, res) => {
       const user = req.body;
@@ -95,194 +275,17 @@ app.patch("/updateRole/:id", async (req, res) => {
 
 
 
-    //stripe transaction
-    // POST: Create Checkout Session
-    app.post("/create-checkout-session", async (req, res) => {
-      const { orgName, email } = req.body;
-
-      if (!orgName || !email) {
-        return res.status(400).json({ message: "Missing required fields" });
-      }
-
-      try {
-        const session = await stripe.checkout.sessions.create({
-          payment_method_types: ["card"],
-          line_items: [
-            {
-              price_data: {
-                currency: "usd",
-                product_data: {
-                  name: `Charity Role Request for ${orgName}`,
-                },
-                unit_amount: 1000, // $10 in cents
-              },
-              quantity: 1,
-            },
-          ],
-          mode: "payment",
-          success_url: "http://localhost:5173/success",
-          cancel_url: "http://localhost:5173/cancel",
-          metadata: {
-            email,
-            orgName,
-          },
-        });
-
-        res.json({ url: session.url }); // Send session URL
-      } catch (err) {
-        console.error("Stripe session error:", err.message);
-        res.status(500).json({ error: err.message });
-      }
-    });
-
-    app.delete("/transactions/:id", async (req, res) => {
-      const id = req.params.id;
-      const result = await db
-        .collection("transactions")
-        .deleteOne({ _id: new ObjectId(id) });
-      res.send(result);
-    });
-
-    app.patch("/transactions/:id", async (req, res) => {
-      const { status } = req.body;
-      const id = req.params.id;
-
-      const result = await db.collection("transactions").updateOne(
-        { _id: new ObjectId(id) },
-        {
-          $set: { status },
-        }
-      );
-      res.send(result);
-    });
-
-    app.get("/transactions", async (req, res) => {
-      const email = req.query.email;
-      const result = await db
-        .collection("transactions")
-        .find({ email })
-        .sort({ date: -1 })
-        .toArray();
-      res.send(result);
-    });
-
-    app.post("/transactions", async (req, res) => {
-      const transaction = req.body;
-
-      if (!transaction?.email || !transaction?.transactionId) {
-        return res.status(400).json({ message: "Missing required fields" });
-      }
-
-      transaction.status = "Pending";
-      transaction.date = new Date();
-
-      const result = await db.collection("transactions").insertOne(transaction);
-      res.send(result);
-    });
-
-    //dashboard reviews
-    app.get("/reviews", async (req, res) => {
-      const email = req.query.email;
-      const result = await reviewCollection.find({ email }).toArray();
-      res.send(result);
-    });
-
-    app.delete("/reviews/:id", async (req, res) => {
-      const id = req.params.id;
-      const result = await reviewCollection.deleteOne({
-        _id: new ObjectId(id),
-      });
-      res.send(result);
-    });
-
-    //dashboard favorite
-    app.get("/favorites", async (req, res) => {
-      const email = req.query.email;
-      const result = await favoritesCollection.find({ email }).toArray();
-      res.send(result);
-    });
-    app.delete("/favorites/:id", async (req, res) => {
-      const id = req.params.id;
-      const result = await favoritesCollection.deleteOne({
-        _id: new ObjectId(id),
-      });
-      res.send(result);
-    });
-
-    //reviews
-    //  GET reviews for a specific donation
-    app.get("/reviews/:donationId", async (req, res) => {
-      try {
-        const { donationId } = req.params;
-        const reviews = await reviewCollection
-          .find({ donationId })
-          .sort({ createdAt: -1 }) // latest first
-          .toArray();
-        res.send(reviews);
-      } catch (err) {
-        console.error("GET reviews error:", err);
-        res.status(500).send({ error: "Failed to fetch reviews" });
-      }
-    });
-
-    //  POST a new review
-    app.post("/reviews", async (req, res) => {
-      try {
-        const review = req.body;
-        review.createdAt = new Date(); // Add timestamp
-        const result = await reviewCollection.insertOne(review);
-        res.send(result);
-      } catch (err) {
-        console.error("POST review error:", err);
-        res.status(500).send({ error: "Failed to post review" });
-      }
-    });
-
-    //  DELETE a review by ID
-    app.delete("/reviews/:id", async (req, res) => {
-      try {
-        const { id } = req.params;
-        const result = await reviewCollection.deleteOne({
-          _id: new ObjectId(id),
-        });
-        res.send(result);
-      } catch (err) {
-        console.error("DELETE review error:", err);
-        res.status(500).send({ error: "Failed to delete review" });
-      }
-    });
-
-    // Favorite POST Route
-    app.post("/favorites", async (req, res) => {
-      try {
-        const favorite = req.body;
-        console.log("Incoming favorite data:", favorite);
-
-        if (!favorite.donationId || !favorite.userEmail) {
-          return res
-            .status(400)
-            .json({ message: "Missing donationId or userEmail" });
-        }
-
-        const result = await favoritesCollection.insertOne(favorite);
-        res.send(result);
-      } catch (error) {
-        console.error("POST /favorites error:", error);
-        res.status(500).json({ message: "Server error", error: error.message });
-      }
-    });
-
     //donations added
     app.post("/donations", async (req, res) => {
       const donation = req.body;
-      const result = await donationCollection.insertOne(donation);
+      const result = await donationsCollection.insertOne(donation);
       res.send(result);
     });
 
     //donations getting
     app.get("/donations", async (req, res) => {
       try {
-        const donations = await donationCollection.find().toArray();
+        const donations = await donationsCollection.find().toArray();
         res.send(donations);
       } catch (error) {
         console.error("Error fetching donations:", error);
@@ -300,7 +303,7 @@ app.patch("/updateRole/:id", async (req, res) => {
         }
 
         const query = { _id: new ObjectId(id) };
-        const donation = await donationCollection.findOne(query);
+        const donation = await donationsCollection.findOne(query);
 
         if (!donation) {
           return res.status(404).send({ error: "Donation not found" });
