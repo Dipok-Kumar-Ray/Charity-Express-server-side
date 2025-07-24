@@ -149,7 +149,6 @@ app.delete("/charity/requests/:id", async (req, res) => {
   res.send(result);
 });
 
-
     // Create charity request
     app.post("/charity-request", async (req, res) => {
       const { name, email, orgName, mission, transactionId } = req.body;
@@ -249,6 +248,22 @@ app.get("/charity/received", async (req, res) => {
 
       res.send({ clientSecret: paymentIntent.client_secret });
     });
+
+    // After Stripe payment success
+app.post("/transactions", async (req, res) => {
+  const transaction = req.body; 
+  transaction.date = new Date();
+  transaction.status = "Approved";
+  const result = await transactionsCollection.insertOne(transaction);
+  res.send(result);
+});
+
+// GET transactions for charity
+app.get("/charity/transactions", async (req, res) => {
+  const email = req.query.email;
+  const result = await transactionsCollection.find({ email }).toArray();
+  res.send(result);
+});
 
  
       // FAVORITES & REVIEWS
