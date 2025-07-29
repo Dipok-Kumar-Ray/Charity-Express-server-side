@@ -20,14 +20,14 @@
 
 // // JWT Verify Middleware
 
-// const verifyJWT = (req, res, next) => {
+// const verifyToken = (req, res, next) => {
 //   const authHeader = req.headers.authorization;
 //   if (!authHeader) {
 //     return res.status(401).send({ message: "Unauthorized access" });
 //   }
 
 //   const token = authHeader.split(" ")[1];
-//   jwt.verify(token, process.env.JWT_SECRET_KEY, (err, decoded) => {
+//   jwt.verify(token, process.env.PAYMENT_GATEWAY_KEY, (err, decoded) => {
 //     if (err) {
 //       return res.status(403).send({ message: "Forbidden access" });
 //     }
@@ -82,7 +82,7 @@
 
 
 //     // middleware
-// const verifyJWT = (req, res, next) => {
+// const verifyToken = (req, res, next) => {
 //   const authHeader = req.headers.authorization;
 //   if (!authHeader) {
 //     return res.status(401).send({ message: "Unauthorized access" });
@@ -340,7 +340,7 @@
 
 
 // // Example protected route (donations)
-// app.post("/donations", verifyJWT, verifyRestaurant, async (req, res) => {
+// app.post("/donations", verifyToken, verifyRestaurant, async (req, res) => {
 //   const donation = req.body;
 //   donation.status = "Pending";
 //   donation.createdAt = new Date();
@@ -428,7 +428,7 @@
 // };
 
 // // Example protected route
-// app.post("/donations", verifyJWT, verifyRestaurant, async (req, res) => {
+// app.post("/donations", verifyToken, verifyRestaurant, async (req, res) => {
 //   const donation = req.body;
 //   donation.status = "Pending";
 //   donation.createdAt = new Date();

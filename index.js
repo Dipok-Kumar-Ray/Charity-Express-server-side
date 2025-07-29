@@ -3,8 +3,10 @@ const cors = require("cors");
 const dotenv = require("dotenv");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const jwt = require("jsonwebtoken");
-
+const admin = require('firebase-admin');
 dotenv.config();
+
+const stripe = require("stripe")(process.env.PAYMENT_GATEWAY_KEY);
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -12,32 +14,12 @@ const port = process.env.PORT || 3000;
 // Middleware
 app.use(cors());
 app.use(express.json());
-
-//stripe payment system
-const stripe = require("stripe")(process.env.PAYMENT_GATEWAY_KEY);
-
-
-   //JWT Middleware
-
-const verifyJWT = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) {
-    return res.status(401).send({ message: "Unauthorized access" });
-  }
-
-  const token = authHeader.split(" ")[1];
-  jwt.verify(token, process.env.JWT_SECRET_KEY, (err, decoded) => {
-    if (err) {
-      return res.status(403).send({ message: "Forbidden access" });
-    }
-    req.decoded = decoded;
-    next();
-  });
-};
+// JWT Middleware
+//verifyToken
 
 
-   //Database Connection
 
+// Database Connection
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.oclat4d.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 const client = new MongoClient(uri, {
@@ -48,10 +30,19 @@ const client = new MongoClient(uri, {
   },
 });
 
+
+// const admin = require("firebase-admin");
+
+var serviceAccount = require("./firebase-admin-key.json");
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+
+
 async function run() {
   try {
     await client.connect();
-
     const db = client.db("CharityEx_DB");
 
     // Collections
@@ -62,26 +53,689 @@ async function run() {
     const usersCollection = db.collection("users");
     const requestsCollection = db.collection("requests");
     const charityRequestsCollection = db.collection("charity-request-status");
+    const charityCollection = db.collection("charity");
 
+    // Verify Restaurant Middleware
+  // verifyToken middleware
 
-      // Verify Restaurant Middleware
+// const verifyToken = (req, res, next) => {
+//   const authHeader = req.headers.authorization;
+//   console.log("Auth header:", authHeader); // Debug
 
-    const verifyRestaurant = async (req, res, next) => {
-      const email = req.decoded.email;
-      const user = await usersCollection.findOne({ email });
-      if (user?.role !== "restaurant") {
-        return res.status(403).send({ message: "Forbidden access" });
+//   if (!authHeader) return res.status(401).send({ message: "Unauthorized" });
+
+//   const token = authHeader.split(" ")[1];
+//   jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+//     if (err) {
+//       console.log("JWT verify error:", err);
+//       return res.status(403).send({ message: "Forbidden" });
+//     }
+//     console.log("Decoded token:", decoded); // Debug
+//     req.user = decoded; // এখানে decoded data রাখছি
+//     next();
+//   });
+// };
+
+const verifyToken = (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+// console.log(authHeader);
+    // 1. Header check
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).send({ message: "Unauthorized: No token provided" });
+    }
+
+    // 2. Token extract
+    const token = authHeader.split(" ")[1];
+console.log(token);
+    // 3. Verify token
+    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+      if (err) {
+        console.error("JWT verification failed:", err.message);
+        return res.status(403).send({ message: "Forbidden: Invalid or expired token" });
       }
+
+      // 4. Save decoded data (email, role ইত্যাদি)
+      req.user = decoded;
+
       next();
+    });
+  } catch (error) {
+    console.error("verifyToken error:", error);
+    res.status(500).send({ message: "Internal server error" });
+  }
+};
+
+
+
+
+
+//////
+//VERIFY CHARITY ....
+const verifyRestaurant = async (req, res, next) => {
+  console.log("Email from token:", req.user.email); // Debug
+
+  const user = await usersCollection.findOne({ email: req.user.email });
+  console.log("User from DB:", user); // Debug
+
+  if (!user || user.role !== "restaurant") {
+    return res.status(403).send({ message: "Forbidden access" });
+  }
+  next();
+};
+
+
+
+
+
+
+    //firebase tokenlksfjfasefjf
+    const verifyFirebaseToken = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).send({ message: "Unauthorized" });
+
+  const token = authHeader.split(" ")[1];
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    req.user = decodedToken; // এখানে email, uid থাকবে
+    next();
+  } catch (error) {
+    res.status(403).send({ message: "Forbidden" });
+  }
+};
+
+
+
+
+    //restaurant lskfjsfdjfofjo;fj;ofjfojfo;jfo;rej
+
+
+
+
+
+//VERIFY CHARITY ...
+const verifyCharity = async (req, res, next) => {
+  const email = req.user?.email;
+  const user = await db.collection("users").findOne({ email });
+
+if (!user || user.role?.toLowerCase() !== "charity") {
+  return res.status(403).send({ message: "Forbidden: Charity access only" });
+}
+
+  next();
+};
+
+
+
+
+
+//VERITY ADMIN
+const verifyAdmin = async (req, res, next) => {
+  const email = req.user?.email;
+  const user = await db.collection("users").findOne({ email });
+
+  if (user?.role !== "admin") {
+    return res.status(403).send({ message: "Forbidden" });
+  }
+  next();
+};
+
+
+////////////////////////////////
+
+const roleMap = {
+  'admin3@gmail.com': 'admin',
+  'charity@gmail.com': 'charity',
+  'restaurant@gmail.com': 'restaurant'
+};
+
+app.post('/users', async (req, res) => {
+  const { name, email } = req.body;
+  if (!email || !name) {
+    return res.status(400).json({ message: 'Name and Email required' });
+  }
+
+  try {
+    const emailLower = email.toLowerCase();
+
+    // Check if user exists
+    const existingUser = await usersCollection.findOne({ email: emailLower });
+    if (existingUser) {
+      return res.status(400).json({ message: 'User already exists' });
+    }
+
+    // Role assign using roleMap
+    const assignedRole = roleMap[emailLower] || 'user';
+
+    const newUser = {
+      name,
+      email: emailLower,
+      role: assignedRole.toLowerCase(),
+      createdAt: new Date(),
+      lastLogin: new Date()
     };
 
+    const result = await usersCollection.insertOne(newUser);
 
-      // ADMIN ROUTES
+    res.status(201).json({
+      message: 'User registered',
+      user: newUser
+    });
 
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+
+app.post('/login', async (req, res) => {
+  const { email } = req.body;
+
+  try {
+    const emailLower = email.toLowerCase();
+
+    const user = await usersCollection.findOne({ email: emailLower });
+    if (user){
+      const token = jwt.sign({ email: user.email, role: user.role.toLowerCase() }, process.env.JWT_SECRET, { expiresIn: '14d' });
+
+    return res.json({ message: 'Login successful', user: { name: user.name, email: user.email, role: user.role }, token });
+
+    }
+
+    // const isMatch = await bcrypt.compare(password, user.password);
+    // if (!isMatch) return res.status(400).json({ message: 'Incorrect password' });
+
+    // Update lastLogin date
+    await usersCollection.insertOne();
+
+    // JWT token with user email and role
+    const token = jwt.sign({ email: user.email, role: user.role.toLowerCase() }, process.env.JWT_SECRET, { expiresIn: '14d' });
+
+    res.json({ message: 'Login successful', user: { name: user.name, email: user.email, role: user.role }, token });
+
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+app.get('/users/:email', async (req, res) => {
+  const email = req.params.email;
+  const user = await db.collection('users').findOne({ email });
+  res.send(user); // এতে role থাকবে
+});
+
+
+
+
+
+
+    //lk;sfjfojfor;weijferwopifjopifjofijfoijerfopierfjopfj
+
+
+
+
+    app.get("/stripe-test", (req, res) => {
+      if (!process.env.PAYMENT_GATEWAY_KEY) {
+        return res.status(500).send("Stripe key missing");
+      }
+      res.send("Stripe is configured correctly!");
+    });
+
+    //    ADMIN ROUTES
+
+    //All Requests (Admin)
+// GET /admin/role-requests  verifyToken, verifyAdmin,
+app.get("/admin/role-requests",  async (req, res) => {
+  const requests = await db.collection("charity_requests").find().toArray();
+  res.send(requests);
+});
+
+
+//Approve Role Request editing ...
+// PATCH /admin/role-requests/approve/:id admin chaile role change kore dite parbe .....
+// PATCH /admin/role-requests/approve/:id
+app.patch("/admin/role-requests/approve/:id", async (req, res) => {
+  const id = req.params.id;
+
+  // ১. রিকোয়েস্ট approve করো
+  const request = await db.collection("charity_requests").findOne({ _id: new ObjectId(id) });
+
+  if (!request) return res.status(404).send({ message: "Request not found" });
+
+  // ২. স্ট্যাটাস আপডেট করো
+  await db.collection("charity_requests").updateOne(
+    { _id: new ObjectId(id) },
+    { $set: { status: "Approved" } }
+  );
+
+  // ৩. ইউজারের role update করো
+  await db.collection("users").updateOne(
+    { email: request.email },
+    { $set: { role: "Charity" } }
+  );
+
+  res.send({ message: "Request Approved and User role updated" });
+});
+
+
+
+
+// Reject Role Request admin chaile role chang kore dicche ...
+// PATCH /admin/role-requests/reject/:id    verifyToken, verifyAdmin,
+app.patch("/admin/role-requests/reject/:id",  async (req, res) => {
+  const id = req.params.id;
+  await db.collection("charity_requests").updateOne(
+    { _id: new ObjectId(id) },
+    { $set: { status: "Rejected" } }
+  );
+  res.send({ message: "Request Rejected" });
+});
+
+
+
+
+
+//GET ALL USERS (ADMIN ONLY)
+// GET /admin/users
+app.get("/admin/users", verifyAdmin, async (req, res) => {
+  try {
+    const users = await db.collection("users").find().toArray();
+    res.send(users);
+  } catch (err) {
+    res.status(500).send({ message: "Failed to fetch users" });
+  }
+});
+
+// PATCH /admin/users/:id/role
+app.patch("/admin/users/:id/role", verifyAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { role } = req.body;
+
+  try {
+    const result = await db.collection("users").updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { role } }
+    );
+    res.send(result);
+  } catch (err) {
+    res.status(500).send({ message: "Failed to update role" });
+  }
+});
+
+// DELETE /admin/users/:id
+app.delete("/admin/users/:id", verifyAdmin, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await db.collection("users").deleteOne({ _id: new ObjectId(id) });
+    res.send(result);
+  } catch (err) {
+    res.status(500).send({ message: "Failed to delete user" });
+  }
+});
+
+
+
+
+
+
+
+
+    //Admin profile connecting ...
+    // POST /users (signup or Google login এর পর user // POST /users (called on signup or first login)
+app.post("/users", async (req, res) => {
+  const { name, email } = req.body;
+
+  const existingUser = await db.collection("users").findOne({ email });
+  if (existingUser) {
+    return res.send(existingUser);
+  }
+
+  const newUser = {
+    name,
+    email,
+    role: "User",
+    createdAt: new Date(),
+  };
+
+  const result = await db.collection("users").insertOne(newUser);
+  res.send(result);
+});
+
+
+    //connecting ...
+  /*   app.get("/users/:email", async (req, res) => {
+      const email = decodeURIComponent(req.params.email);
+      const user = await usersCollection.findOne({ email });
+
+      if (!user) {
+        return res.status(404).send({ message: "User not found" });
+      }
+
+      res.send(user);
+    }); */
+
+    //All verified donations
+    app.get(
+      "/admin/verified-donations",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const result = await donationsCollection
+          .find({ status: "Verified" })
+          .toArray();
+        res.send(result);
+      }
+    );
+
+    //feature a donations
+    app.post(
+      "/admin/feature-donation",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const { donationId } = req.body;
+
+        // Check if already featured
+        const existing = await db
+          .collection("featured")
+          .findOne({ donationId });
+        if (existing) {
+          return res.status(400).send({ message: "Already featured" });
+        }
+
+        // Find donation details
+        const donation = await donationsCollection.findOne({
+          _id: new ObjectId(donationId),
+        });
+        if (!donation) {
+          return res.status(404).send({ message: "Donation not found" });
+        }
+
+        // Insert into featured collection
+        const featuredDonation = {
+          donationId,
+          title: donation.title,
+          foodType: donation.foodType,
+          restaurantName: donation.restaurantName,
+          image: donation.image,
+          date: new Date(),
+        };
+
+        const result = await db
+          .collection("featured")
+          .insertOne(featuredDonation);
+        res.send(result);
+      }
+    );
+
+    //all featured donations(public / home page)
+    app.get("/featured", async (req, res) => {
+      const result = await db.collection("featured").find().toArray();
+      res.send(result);
+    });
+
+    //All request (only admin)  verifyToken, verifyAdmin,
+    app.get("/admin/requests",  async (req, res) => {
+      const result = await requestsCollection
+        .find()
+        .sort({ _id: -1 })
+        .toArray();
+      res.send(result);
+    });
+
+    //delete admin only
+    app.delete(
+      "/admin/requests/:id",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.id;
+        const result = await requestsCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+        res.send(result);
+      }
+    );
+
+    app.get(
+      "/admin/role-requests",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const result = await charityRequestsCollection
+          .find()
+          .sort({ date: -1 })
+          .toArray();
+        res.send(result);
+      }
+    );
+
+    app.patch(
+      "/admin/role-requests/approve/:id",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.id;
+
+        // Get request
+        const request = await charityRequestsCollection.findOne({
+          _id: new ObjectId(id),
+        });
+        if (!request)
+          return res.status(404).send({ message: "Request not found" });
+
+        // Update user role
+        await usersCollection.updateOne(
+          { email: request.email },
+          { $set: { role: "Charity" } }
+        );
+
+        // Update request status
+        const result = await charityRequestsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { status: "Approved" } }
+        );
+
+        res.send(result);
+      }
+    );
+
+    app.patch(
+      "/admin/role-requests/reject/:id",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.id;
+
+        const result = await charityRequestsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { status: "Rejected" } }
+        );
+
+        res.send(result);
+      }
+    );
+
+
+    //user role make Admin / Restaurant / Charity
+// PATCH /users/role/:id verifyToken, verifyAdmin
+app.patch("/users/role/:id",  async (req, res) => {
+  const { id } = req.params;
+  const { role } = req.body;
+
+  try {
+    const result = await db.collection("users").updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { role } }
+    );
+
+    res.send({ success: true, result });
+  } catch (err) {
+    res.status(500).send({ message: "Failed to update role" });
+  }
+});
+
+
+    // Get all donations (for admin)
+    app.get("/admin/donations", async (req, res) => {
+      const donations = await donationsCollection.find().toArray();
+      res.send(donations);
+    });
+
+    // Verify donation
+    app.patch("/admin/donations/verify/:id", async (req, res) => {
+      const id = req.params.id;
+
+      const result = await donationsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { status: "Verified" } }
+      );
+
+      res.send(result);
+    });
+
+    // Reject donation
+    app.patch("/admin/donations/reject/:id", async (req, res) => {
+      const id = req.params.id;
+
+      const result = await donationsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { status: "Rejected" } }
+      );
+
+      res.send(result);
+    });
+
+    // Get all users
+// GET /users  verifyToken, verifyAdmin,
+app.get("/users",  async (req, res) => {
+  try {
+    const users = await db.collection("users").find().toArray();
+    res.send(users);
+  } catch (err) {
+    res.status(500).send({ message: "Failed to fetch users" });
+  }
+});
+
+
+    // Update role
+    app.patch("/updateRole/:id", async (req, res) => {
+      const { id } = req.params;
+      const { role } = req.body;
+      if (!role) return res.status(400).json({ message: "Role is required" });
+
+      const result = await usersCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { role } }
+      );
+      res.send(result);
+    });
+
+// DELETE /users/:id admin only ...  verifyToken, verifyAdmin,
+app.delete("/users/:id", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await db.collection("users").deleteOne({ _id: new ObjectId(id) });
+    res.send({ success: true, result });
+  } catch (err) {
+    res.status(500).send({ message: "Failed to delete user" });
+  }
+});
+
+
+    //All donations (only admin)  verifyToken, verifyAdmin,
+    app.get("/admin/donations",  async (req, res) => {
+      const result = await donationsCollection
+        .find()
+        .sort({ _id: -1 })
+        .toArray();
+      res.send(result);
+    });
+
+    //verify donations
+    app.patch(
+      "/admin/donations/verify/:id",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.id;
+
+        const result = await donationsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { status: "Verified" } }
+        );
+
+        res.send(result);
+      }
+    );
+
+    //reject donations
+    app.patch(
+      "/admin/donations/reject/:id",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.id;
+
+        const result = await donationsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { status: "Rejected" } }
+        );
+
+        res.send(result);
+      }
+    );
+
+    // Checking admin by email
+    app.get("/users/admin", async (req, res) => {
+      const email = req.query.email;
+      const user = await usersCollection.findOne({ email });
+      res.send({ isAdmin: user?.role === "admin" });
+    });
+
+    // Admin Profile Route
+    // GET: Get user role by email
+    app.get("/users/:email/role", verifyAdmin, async (req, res) => {
+      try {
+        const email = req.params.email;
+
+        if (!email) {
+          return res.status(400).send({ message: "Email is required" });
+        }
+
+        const user = await usersCollection.findOne({ email });
+
+        if (!user) {
+          return res.status(404).send({ message: "User not found" });
+        }
+
+        res.send({ role: user.role || "user" });
+      } catch (error) {
+        console.error("Error getting user role:", error);
+        res.status(500).send({ message: "Failed to get role" });
+      }
+    });
+//verifyToken, verifyAdmin,
+    app.get("/admin/profile",  async (req, res) => {
+      const email = req.query.email;
+      const user = await usersCollection.findOne({ email });
+
+     if (!user || user.role.toLowerCase() !== 'admin') {
+  return res.status(403).send({ message: "Forbidden" });
+}
+
+
+      res.send(user);
+    });
 
     // Get all charity requests
     app.get("/admin/charity-requests", async (req, res) => {
-      const result = await charityRequestsCollection.find().sort({ date: -1 }).toArray();
+      const result = await charityRequestsCollection
+        .find()
+        .sort({ date: -1 })
+        .toArray();
       res.send(result);
     });
 
@@ -95,9 +749,10 @@ async function run() {
         { $set: { status } }
       );
 
-      // update transaction status as well
-      const request = await charityRequestsCollection.findOne({ _id: new ObjectId(id) });
-
+      // Update related transaction
+      const request = await charityRequestsCollection.findOne({
+        _id: new ObjectId(id),
+      });
       if (request) {
         await transactionsCollection.updateOne(
           { transactionId: request.transactionId },
@@ -108,46 +763,125 @@ async function run() {
       res.send(result);
     });
 
+    //  CHARITY ROUTES
 
-      // CHARITY ROUTES
+    //USER J DATA TA PATHACCHE SEI DATA TA ADMIN ADMIN APPROVE AND REJECT KORBE
+    // সব Charity role request load করার জন্য
+app.get("/charity-requests", async (req, res) => {
+  try {
+    const requests = await charityRequestsCollection.find().toArray();
+    res.send(requests);
+  } catch (error) {
+    res.status(500).send({ message: error.message });
+  }
+});
+//charity-request/ approve id
+app.patch("/charity-requests/approve/:id", async (req, res) => {
+  const id = req.params.id;
+  const request = await charityRequestsCollection.findOne({ _id: new ObjectId(id) });
+
+  if (!request) return res.status(404).send({ message: "Request not found" });
+
+  // 1. Update user's role to Charity
+  await usersCollection.updateOne(
+    { email: request.email },
+    { $set: { role: "charity" } }
+  );
+
+  // 2. Update request status to Approved
+  await charityRequestsCollection.updateOne(
+    { _id: new ObjectId(id) },
+    { $set: { status: "Approved" } }
+  );
+
+  res.send({ message: "Request approved & role updated" });
+});
+//charity-requests/reject/:id
+app.patch("/charity-requests/reject/:id", async (req, res) => {
+  const id = req.params.id;
+
+  const result = await charityRequestsCollection.updateOne(
+    { _id: new ObjectId(id) },
+    { $set: { status: "Rejected" } }
+  );
+
+  res.send({ message: "Request rejected", result });
+});
 
 
-    // Charity Profile
+
+
+
+
+    // Charity Profile //checking done
     app.get("/charity/profile", async (req, res) => {
       const email = req.query.email;
       if (!email) return res.status(400).send({ message: "Email required" });
 
-      const charityProfile = await db.collection("charity").findOne({ email });
+      const charityProfile = await charityCollection("charity").findOne({ email });
       res.send(charityProfile || {});
     });
 
-// GET /charity/requests?email=
-app.get("/charity/requests", async (req, res) => {
-  try {
-    const email = req.query.email;
+    // Create Checkout Session
+    app.post("/create-checkout-session", async (req, res) => {
+      try {
+        const { name, email, orgName, mission } = req.body;
 
-    if (!email) {
-      return res.status(400).send({ message: "Email required" });
-    }
+        if (!name || !email || !orgName || !mission) {
+          return res.status(400).send({ message: "All fields required" });
+        }
 
-    // সরাসরি email দিয়ে filter করো
-    const result = await charityRequestsCollection.find({ email }).toArray();
+        const session = await stripe.checkout.sessions.create({
+          payment_method_types: ["card"],
+          mode: "payment",
+          line_items: [
+            {
+              price_data: {
+                currency: "usd",
+                product_data: {
+                  name: `Charity Role Request - ${orgName}`,
+                },
+                unit_amount: 2500,
+              },
+              quantity: 1,
+            },
+          ],
+          success_url: `http://localhost:5173/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `http://localhost:5173/request-charity?cancelled=true`,
+          metadata: { name, email, orgName, mission },
+        });
 
-    res.send(result);
-  } catch (error) {
-    console.error("Error fetching charity requests:", error);
-    res.status(500).send({ message: "Internal Server Error" });
-  }
-});
+        res.send({ url: session.url });
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Failed to create checkout session" });
+      }
+    });
 
+    // Charity users
+    app.get("/users/charity", async (req, res) => {
+      const email = req.query.email;
+      const user = await usersCollection.findOne({ email, role: "charity" });
+      res.send(user);
+    });
+
+    // Charity request list
+    app.get("/charity/requests", async (req, res) => {
+      const email = req.query.email;
+      const result = await requestsCollection
+        .find({ charityEmail: email })
+        .toArray();
+      res.send(result);
+    });
 
     // Delete charity request
-app.delete("/charity/requests/:id", async (req, res) => {
-  const id = req.params.id;
-  const query = { _id: new ObjectId(id) };
-  const result = await charityRequestsCollection.deleteOne(query);
-  res.send(result);
-});
+    app.delete("/charity/requests/:id", async (req, res) => {
+      const id = req.params.id;
+      const result = await charityRequestsCollection.deleteOne({
+        _id: new ObjectId(id),
+      });
+      res.send(result);
+    });
 
     // Create charity request
     app.post("/charity-request", async (req, res) => {
@@ -161,13 +895,12 @@ app.delete("/charity/requests/:id", async (req, res) => {
         email,
         status: { $in: ["Pending", "Approved"] },
       });
+      if (exists)
+        return res
+          .status(400)
+          .send({ message: "Request already submitted or approved" });
 
-      if (exists) {
-        return res.status(400).send({ message: "Request already submitted or approved" });
-      }
-
-      // Insert into charityRequests
-      const charityRequest = {
+      await charityRequestsCollection.insertOne({
         name,
         email,
         orgName,
@@ -175,19 +908,16 @@ app.delete("/charity/requests/:id", async (req, res) => {
         transactionId,
         status: "Pending",
         date: new Date(),
-      };
-      await charityRequestsCollection.insertOne(charityRequest);
+      });
 
-      // Insert into transactions
-      const transaction = {
+      await transactionsCollection.insertOne({
         transactionId,
         email,
         amount: 25,
         date: new Date(),
         purpose: "Charity Role Request",
         status: "Pending",
-      };
-      await transactionsCollection.insertOne(transaction);
+      });
 
       res.send({ success: true });
     });
@@ -199,120 +929,336 @@ app.delete("/charity/requests/:id", async (req, res) => {
         email,
         status: { $in: ["Pending", "Approved"] },
       });
-
       res.send({ exists: !!result });
     });
 
     // GET My Pickups
-app.get("/charity/pickups", async (req, res) => {
-  const email = req.query.email;
-  const result = await requestsCollection
-    .find({ charityEmail: email, status: "Accepted" })
-    .toArray();
-  res.send(result);
-});
-
-// PUT Confirm Pickup
-app.put("/charity/pickups/:id", async (req, res) => {
-  const id = req.params.id;
-  const filter = { _id: new ObjectId(id) };
-  const updateDoc = {
-    $set: { status: "Picked Up", pickupDate: new Date() },
-  };
-  const result = await requestsCollection.updateOne(filter, updateDoc);
-  res.send(result);
-});
-
-// GET Received Donations
-app.get("/charity/received", async (req, res) => {
-  const email = req.query.email;
-  const result = await requestsCollection
-    .find({ charityEmail: email, status: "Picked Up" })
-    .toArray();
-  res.send(result);
-});
-
-
-     //  PAYMENT ROUTES
-
-
-    // Create Payment Intent
-    app.post("/create-payment-intent", async (req, res) => {
-      const { amount } = req.body;
-
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: amount * 100, // Stripe uses cents
-        currency: "usd",
-        payment_method_types: ["card"],
-      });
-
-      res.send({ clientSecret: paymentIntent.client_secret });
-    });
-
-    // After Stripe payment success
-app.post("/transactions", async (req, res) => {
-  const transaction = req.body; 
-  transaction.date = new Date();
-  transaction.status = "Approved";
-  const result = await transactionsCollection.insertOne(transaction);
-  res.send(result);
-});
-
-// GET transactions for charity
-app.get("/charity/transactions", async (req, res) => {
-  const email = req.query.email;
-  const result = await transactionsCollection.find({ email }).toArray();
-  res.send(result);
-});
-
- 
-      // FAVORITES & REVIEWS
- 
-
-    // Get favorites
-    app.get("/favorites", async (req, res) => {
+    app.get("/charity/pickups", async (req, res) => {
       const email = req.query.email;
-      if (!email) return res.status(400).send({ message: "Email is required" });
-
-      const favorites = await favoritesCollection.find({ email }).toArray();
-      res.send(favorites);
-    });
-
-    // Delete favorite
-    app.delete("/favorites/:id", async (req, res) => {
-      const id = req.params.id;
-      const result = await favoritesCollection.deleteOne({ _id: new ObjectId(id) });
+      const result = await requestsCollection
+        .find({ charityEmail: email, status: "Accepted" })
+        .toArray();
       res.send(result);
     });
 
-    // Get reviews
-    app.get("/reviews", async (req, res) => {
+    // PUT Confirm Pickup
+    app.put("/charity/pickups/:id", async (req, res) => {
+      const id = req.params.id;
+      const result = await requestsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { status: "Picked Up", pickupDate: new Date() } }
+      );
+      res.send(result);
+    });
+
+    // GET Received Donations
+    app.get("/charity/received", async (req, res) => {
       const email = req.query.email;
+      const result = await requestsCollection
+        .find({ charityEmail: email, status: "Picked Up" })
+        .toArray();
+      res.send(result);
+  })
+
+// index.js অথবা routes/payment.js done
+app.post("/create-payment-intent", async (req, res) => {
+  try {
+    const { amount } = req.body;
+
+    if (!amount) {
+      return res.status(400).send({ message: "Amount is required" });
+    }
+
+    // Stripe এ amount কে cents এ convert done
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amount * 100,
+      currency: "usd",
+       automatic_payment_methods: { enabled: true },
+    });
+
+    res.send({ clientSecret: paymentIntent.client_secret });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ error: err.message });
+  }
+});
+
+
+// GET /charity-requests 
+app.get("/charity-requests", verifyAdmin, async (req, res) => {
+  try {
+    const requests = await db.collection("charity-requests").find().toArray();
+    res.send(requests);
+  } catch (error) {
+    res.status(500).send({ message: error.message });
+  }
+});
+
+
+
+
+//transaction and admin approval system kora hocche ....
+app.post("/charity-requests", async (req, res) => {
+  try {
+    const { name, email, organization, mission, transactionId, amount } = req.body;
+
+    // Check if already pending or approved
+    const existing = await charityRequestsCollection.findOne({
+      email,
+      status: { $in: ["Pending", "Approved"] },
+    });
+
+    if (existing) {
+      return res.status(400).send({ message: "Already requested or approved" });
+    }
+
+    const request = {
+      name,
+      email,
+      organization,
+      mission,
+      transactionId,
+      amount,
+      status: "Pending",
+      createdAt: new Date(),
+    };
+
+    await charityRequestsCollection.insertOne(request);
+    res.send({ message: "Charity request submitted" });
+  } catch (error) {
+    res.status(500).send({ message: error.message });
+  }
+});
+
+
+//charity admin ke request pathacche 
+// GET: Check user request status
+app.get("/charity-requests/:email", async (req, res) => {
+  const email = req.params.email;
+  const request = await charityRequestsCollection.findOne({ email });
+  if (!request) {
+    return res.send({ status: "None" });
+  }
+  res.send({ status: request.status });
+});
+
+
+// PATCH /charity-requests/:id
+app.patch("/charity-requests/:id", verifyAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body; // "approved" or "rejected"
+
+  try {
+    const request = await db.collection("charity-requests").findOne({ _id: new ObjectId(id) });
+    if (!request) return res.status(404).send({ message: "Request not found" });
+
+    // If approved, update user role to charity
+    if (status === "approved") {
+      await db.collection("users").updateOne(
+        { email: request.email },
+        { $set: { role: "charity" } }
+      );
+    }
+
+    // Update request status
+    const result = await db.collection("charity-requests").updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { status } }
+    );
+
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: error.message });
+  }
+});
+
+
+
+
+
+
+//transaction data getiing  connecting ....
+// index.js এ transactionsCollection ব্যবহার করো
+app.get("/transactions/:email", async (req, res) => {
+  try {
+    const { email } = req.params;
+    const transactions = await transactionsCollection
+      .find({ email })
+      .sort({ date: -1 }) // latest first
+      .toArray();
+
+    res.send(transactions);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ error: err.message });
+  }
+});
+
+//transaction pending ....
+app.get("/transactions", async (req, res) => {
+  try {
+    const transactions = await transactionsCollection
+      .find()
+      .sort({ date: -1 })
+      .toArray();
+
+    res.send(transactions);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ error: err.message });
+  }
+});
+
+
+
+    //Post transaction After Stripe payment success
+app.post("/transactions", async (req, res) => {
+  try {
+    const { transactionId, email, amount, purpose, date } = req.body;
+
+    const transaction = {
+      transactionId,
+      email,
+      amount,
+      purpose,
+      date: date || new Date(),
+    };
+
+    await transactionsCollection.insertOne(transaction);
+    res.send({ message: "Transaction saved" });
+  } catch (error) {
+    res.status(500).send({ message: error.message });
+  }
+});
+
+
+    // GET transactions for charity
+    app.get("/charity/transactions", async (req, res) => {
+      const email = req.query.email;
+      const result = await transactionsCollection.find({ email }).toArray();
+      res.send(result);
+    });
+
+    //   FAVORITES & REVIEWS
+
+    //add to favorites connecting ...
+    app.post("/favorites", async (req, res) => {
+      const {
+        userEmail,
+        donationId,
+        title,
+        image,
+        restaurantName,
+        location,
+        status,
+        quantity,
+      } = req.body;
+
+      if (!userEmail || !donationId) {
+        return res
+          .status(400)
+          .send({ message: "User email and donation ID are required" });
+      }
+
+      // Check if already saved
+      const exists = await favoritesCollection.findOne({
+        userEmail,
+        donationId,
+      });
+      if (exists) {
+        return res.status(400).send({ message: "Already saved to favorites" });
+      }
+
+      const favorite = {
+        userEmail,
+        donationId,
+        title,
+        image,
+        restaurantName,
+        location,
+        status,
+        quantity,
+        date: new Date(),
+      };
+
+      const result = await favoritesCollection.insertOne(favorite);
+      res.send(result);
+    });
+
+    //user favorites done
+
+    // Get favorites done
+    app.get("/favorites", async (req, res) => {
+      const email = req.query.userEmail;
+      if (!email) return res.status(400).send({ message: "Email is required" });
+      console.log(email);
+
+      const favorites = await favoritesCollection
+        .find({ userEmail: email })
+        .toArray();
+      res.send(favorites);
+    });
+    //  this is for faviorate all test
+    app.get("/allFaviorateTest", async (req, res) => {
+      const faviorateAll = await favoritesCollection.find().toArray();
+      res.send(faviorateAll);
+    });
+    // Delete favorite done
+    app.delete("/favorites/:id", async (req, res) => {
+      const id = req.params.id;
+      const result = await favoritesCollection.deleteOne({
+        _id: new ObjectId(id),
+      });
+      res.send(result);
+    });
+
+
+
+
+
+    app.get("/reviewsall", async (req, res) => {
+      const result = await reviewsCollection.find().toArray();
+      res.send(result);
+    });
+
+
+//reviews section ee review dewar jonno get kora hoyeche
+    // this is for get query data from reviews collection
+    app.get("/reviews", async (req, res) => {
+      const email = req.query.userEmail;
+      console.log(email);
+
       if (!email) return res.status(400).send({ message: "Email is required" });
 
-      const reviews = await reviewsCollection.find({ email }).toArray();
+      const reviews = await reviewsCollection
+        .find({ userEmail: email })
+        .toArray();
       res.send(reviews);
     });
 
     // POST Review
-app.post("/reviews", async (req, res) => {
-  const review = req.body; 
-  review.reviewDate = new Date(); // save review date
-  const result = await reviewsCollection.insertOne(review);
-  res.send(result);
-});
+    app.post("/reviews", async (req, res) => {
+      const review = req.body;
+      review.reviewDate = new Date();
+      const result = await reviewsCollection.insertOne(review);
+      res.send(result);
+    });
 
-
-    // Delete review
+    // Delete review done
     app.delete("/reviews/:id", async (req, res) => {
       const id = req.params.id;
-      const result = await reviewsCollection.deleteOne({ _id: new ObjectId(id) });
+      const result = await reviewsCollection.deleteOne({
+        _id: new ObjectId(id),
+      });
       res.send(result);
     });
 
 
-      // RESTAURANT ROUTES
- 
+
+
+
+
+    //  RESTAURANT ROUTES
 
     // Get user role
     app.get("/users/:email", async (req, res) => {
@@ -322,26 +1268,21 @@ app.post("/reviews", async (req, res) => {
     });
 
     // Add donation (protected)
-    app.post("/donations", verifyJWT, verifyRestaurant, async (req, res) => {
-      const donation = req.body;
-      donation.status = "Pending";
-      donation.createdAt = new Date();
-
-      const result = await donationsCollection.insertOne(donation);
-      res.send(result);
+    app.post("/donations",  verifyToken, verifyRestaurant,async (req, res) => {
+  const donation = req.body;
+  donation.status = "Pending";
+  donation.createdAt = new Date();
+  const result = await donationsCollection.insertOne(donation);
+     res.send(result);
     });
-
-    // Get my donations
-    app.get("/donations", async (req, res) => {
-      const email = req.query.email;
-      const result = await donationsCollection.find({ restaurantEmail: email }).toArray();
-      res.send(result);
-    });
+  
 
     // Delete donation
     app.delete("/donations/:id", async (req, res) => {
       const id = req.params.id;
-      const result = await donationsCollection.deleteOne({ _id: new ObjectId(id) });
+      const result = await donationsCollection.deleteOne({
+        _id: new ObjectId(id),
+      });
       res.send(result);
     });
 
@@ -349,28 +1290,19 @@ app.post("/reviews", async (req, res) => {
     app.patch("/donations/:id", async (req, res) => {
       const id = req.params.id;
       const updatedData = req.body;
-
       const result = await donationsCollection.updateOne(
         { _id: new ObjectId(id) },
-        {
-          $set: {
-            title: updatedData.title,
-            foodType: updatedData.foodType,
-            quantity: updatedData.quantity,
-            pickupTime: updatedData.pickupTime,
-            location: updatedData.location,
-            image: updatedData.image,
-          },
-        }
+        { $set: updatedData }
       );
-
       res.send(result);
     });
 
     // Get donation requests
     app.get("/requests", async (req, res) => {
       const email = req.query.email;
-      const result = await requestsCollection.find({ restaurantEmail: email }).toArray();
+      const result = await requestsCollection
+        .find({ restaurantEmail: email })
+        .toArray();
       res.send(result);
     });
 
@@ -394,70 +1326,39 @@ app.post("/reviews", async (req, res) => {
       res.send(result);
     });
 
-
-       //USER ROUTES
- 
-
-    // Get all users
-    app.get("/users", async (req, res) => {
-      const users = await usersCollection.find().toArray();
-      res.send(users);
-    });
-
-    // Add user
-    app.post("/users", async (req, res) => {
-      const user = req.body;
-      const result = await usersCollection.insertOne(user);
-      res.send(result);
-    });
-
-    // Update user role
-    app.patch("/updateRole/:id", async (req, res) => {
-      const { id } = req.params;
-      const { role } = req.body;
-
-      if (!role) {
-        return res.status(400).json({ message: "Role is required" });
-      }
-
-      const query = { _id: new ObjectId(id) };
-      const result = await usersCollection.updateOne(query, { $set: { role } });
-
-      res.send(result);
-    });
-
-
-       //PUBLIC DONATION ROUTES
-
+    // PUBLIC DONATION ROUTES
 
     // Get all donations
     app.get("/donations", async (req, res) => {
-      const donations = await donationsCollection.find().toArray();
+      const donations = await donationsCollection.find({status: "Verified"}).toArray();
       res.send(donations);
     });
 
     // Get donation details
     app.get("/donations/:id", async (req, res) => {
       const id = req.params.id;
-
-      if (!ObjectId.isValid(id)) {
+      if (!ObjectId.isValid(id))
         return res.status(400).send({ error: "Invalid donation ID" });
-      }
 
-      const donation = await donationsCollection.findOne({ _id: new ObjectId(id) });
-
-      if (!donation) {
+      const donation = await donationsCollection.findOne({
+        _id: new ObjectId(id),
+      });
+      if (!donation)
         return res.status(404).send({ error: "Donation not found" });
-      }
 
       res.send(donation);
     });
 
- 
+
+
+
+
+
+
     await client.db("admin").command({ ping: 1 });
     console.log("Connected to MongoDB!");
   } finally {
-    // Do not close client here to keep server alive
+    // keep connection open
   }
 }
 
@@ -466,7 +1367,6 @@ run().catch(console.dir);
 app.get("/", (req, res) => {
   res.send("Donation Server is running");
 });
-
 
 app.listen(port, () => {
   console.log(`Server is running on port : ${port}`);

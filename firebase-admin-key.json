@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "charity-express-d807c",
+  "private_key_id": "31459b228219d6c8cc0e73794565a2e6f0cec2ed",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC3YDzR+/GtyTGx\np6pytK143JFpOH8fKt0pmmIzNTiaGdVhwPnB+yCqdxa5mnCFre/WLXD/Dr9JB7D/\npv4x2GALv2Q6zxiUhpD3v1j/yop1md1K5msMgoqpzJoTXdbVDf9bw9y0p7uJG/U7\nFjshANiUIAi9fLh0gqaLV8rlJNEo33KWMvZQxKEeEXKj6p0SwfSuvfiWKpoPczrA\nBpCMp8VcuDmPmMitJrDURDI1Jl/x/k8f7BCi4XjHWJoAwvZ89KrWZ1LoQEuxm121\nq+aPSApz9FwpnxEHmRSNs4tktYPU5YYzNFgcrllcuSU8RFHgMZzf0CNqd19k3jY6\nqFOGSgplAgMBAAECggEAJxD/pBSytj1ostpve6R2WItVBz+cBX3SRCy5wwMRnfLm\n/L5p9yOTH/3i/4OheTlHIS/pJM11fw9+a9idyuy3+Yi6x7SbHflVJRLE2SnDOa6f\n8HcKU030UJxgLsQNIrKqtlgRywL49wrXwdDIpA1UFqqEcioB+gBjjsgTV6HyVWx4\nT+YHVt0OWPmqu6A8euRnFrjNIQVTfAEF/gt2IX9omLHh06f02g1rqto6WuE05f70\nN4geP004v3hWipky6+DLMBJmUUHBa7t/NTE7sszU1Dj4JQ7kXr3KW6qkrP4QWLcL\nnL9UHS8MOjHGBQHKQbi4f4/7k2Jtv0kme//StPDigQKBgQDyFUQuqd+irD1fwfyN\nqdsRCm0+SiIVwuwof+DcQGXkptz46Ya2qNuyPOiYsSZPLBv4iLBKFzog1edn7+uK\ndAZt4bkrrwAA78TMb+CT+1J9Y3nivf0tZXS7bmesqtPLpKX5VlGVlVk5tbqtoGjV\nH7nXryCPPlBfwsm6497x7iUGVQKBgQDB6vqaFxm0XmR9Rykimst/Ece6TN5Mm6d9\nDbKzb9YsZbi8T8msLmxCnGI3CKWs+CBFh6Rm4bGJgnS3PNCSxr6oBOV7iVbVDYKc\nQuOefHrkua6Ttog64VwawUDvkJOfWRL9MJade0h7oxH45XWg/d+xFtxVSxpAxBgd\nzpXFsSlj0QKBgGNDtx6PR4VTrSLrz1xjbtGQ/fSRv2I++EkvDowh1+YnSerDDxst\nKFDwyst5sGS8iIejvO3UkmBOdcHXzjSKmOxLp3szGgRITOErauIjJtMFjEAeeYc4\n1+HXRqm1rn0NeYVBENkOUXTpgK+bXAEwLiszw10ZRynNHJ0GvS9k4Ee1AoGBAKb8\nZO6aI91pR1mGFMsix0fWFMq99NO9Wh5a1F6mWKUEt28Zug3WMA2wQvcnMBvh01Bs\nfMrHYS2LtFwyN12dXYKsLL0TyD1RE/7hrsbEZMNfjhDPJ0Kk276CWhuxwR2AA9UZ\nqSlVh1ZIV2qglYmb9Ku3hua/9Ix/EFFimyCQ7ZZxAoGBALw8RyQ14qRJQiwLVq3M\nd1rF5NZVgBvTFR89w4umM5C8Shilwe+AycX9f04yCCZQzKIZHO+zdJpci++Kr7v6\n0e9jvJ2vGVwYdU7aUxWwMuN9QcGZhQyycFrDAp1DCzx7Fue/bYNWHuSaKiZDILVv\nVouf0Bk3ZWlUnTb85IH1qj/a\n-----END PRIVATE KEY-----\n",
+  "client_email": "firebase-adminsdk-fbsvc@charity-express-d807c.iam.gserviceaccount.com",
+  "client_id": "105615325772180381580",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40charity-express-d807c.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
