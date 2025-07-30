@@ -1,10 +1,10 @@
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
+dotenv.config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const jwt = require("jsonwebtoken");
 const admin = require('firebase-admin');
-dotenv.config();
 
 const stripe = require("stripe")(process.env.PAYMENT_GATEWAY_KEY);
 
@@ -12,8 +12,28 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // Middleware
-app.use(cors());
+// app.use(cors());
 app.use(express.json());
+
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://charity-express-d807c.web.app'
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  credentials: true
+}));
+
+
+
 // JWT Middleware
 //verifyToken
 
@@ -213,98 +233,9 @@ const roleMap = {
 }); 
 
 
-/* app.post('/users', async (req, res) => {
-  const { name, email, photoURL } = req.body; // photoURL নাও
-    console.log("Register request body:", req.body);
-  if (!email || !name) {
-    return res.status(400).json({ message: 'Name and Email required' });
-  }
-
-  try {
-    const emailLower = email.toLowerCase();
-
-    // Check if user exists
-    const existingUser = await usersCollection.findOne({ email: emailLower });
-    if (existingUser) {
-      return res.status(400).json({ message: 'User already exists' });
-    }
-
-    // Role assign using roleMap
-    const assignedRole = roleMap[emailLower] || 'user';
-
-    const newUser = {
-      name,
-      email: emailLower,
-      photoURL: photoURL || "/default.png", // এখানে photoURL save করো
-      role: assignedRole.toLowerCase(),
-      createdAt: new Date(),
-      lastLogin: new Date()
-    };
-
-    const result = await usersCollection.insertOne(newUser);
-
-    res.status(201).json({
-      message: 'User registered',
-      user: newUser
-    });
-
-  } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-}); */
 
 
 
-/* app.post('/login', async (req, res) => {
-  const { email, name, photoURL } = req.body;
-
-  if (!email) return res.status(400).json({ message: "Email is required" });
-
-  try {
-    const emailLower = email.toLowerCase();
-    let user = await usersCollection.findOne({ email: emailLower });
-
-    if (user) {
-      if (!user.photoURL && photoURL) {
-        await usersCollection.updateOne({ email: emailLower }, { $set: { photoURL } });
-        user.photoURL = photoURL;
-      }
-
-      const token = jwt.sign({ email: user.email, role: user.role.toLowerCase() }, process.env.JWT_SECRET, { expiresIn: '14d' });
-
-      return res.json({
-        message: 'Login successful',
-        user: { name: user.name, email: user.email, role: user.role, photoURL: user.photoURL || "/default.png" },
-        token
-      });
-    }
-
-    // If user doesn't exist, create new
-    const assignedRole = roleMap[emailLower] || 'user';
-    const newUser = {
-      name: name || "User",
-      email: emailLower,
-      photoURL: photoURL || "/default.png",
-      role: assignedRole.toLowerCase(),
-      createdAt: new Date(),
-      lastLogin: new Date()
-    };
-
-    await usersCollection.insertOne(newUser);
-
-    const token = jwt.sign({ email: newUser.email, role: newUser.role }, process.env.JWT_SECRET, { expiresIn: '14d' });
-
-    res.json({
-      message: 'Login successful',
-      user: newUser,
-      token
-    });
-
-  } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-});
- */
 
 
 
@@ -424,7 +355,7 @@ app.patch("/admin/role-requests/approve/:id", async (req, res) => {
 
 // Reject Role Request admin chaile role chang kore dicche ...
 // PATCH /admin/role-requests/reject/:id    verifyToken, verifyAdmin,
-app.patch("/admin/role-requests/reject/:id",  async (req, res) => {
+app.patch("/admin/role-requests/reject/:id",verifyToken, verifyAdmin,  async (req, res) => {
   const id = req.params.id;
   await db.collection("charity_requests").updateOne(
     { _id: new ObjectId(id) },
@@ -449,7 +380,7 @@ app.get("/admin/users", verifyAdmin, async (req, res) => {
 });
 
 // PATCH /admin/users/:id/role
-app.patch("/admin/users/:id/role", verifyAdmin, async (req, res) => {
+app.patch("/admin/users/:id/role", verifyToken, verifyAdmin, async (req, res) => {
   const { id } = req.params;
   const { role } = req.body;
 
@@ -465,7 +396,7 @@ app.patch("/admin/users/:id/role", verifyAdmin, async (req, res) => {
 });
 
 // DELETE /admin/users/:id
-app.delete("/admin/users/:id", verifyAdmin, async (req, res) => {
+app.delete("/admin/users/:id", verifyToken, verifyAdmin, async (req, res) => {
   const { id } = req.params;
 
   try {
@@ -972,7 +903,7 @@ app.delete("/card/:id", async (req, res) => {
       }
     });
 //verifyToken, verifyAdmin,
-    app.get("/admin/profile",  async (req, res) => {
+    app.get("/admin/profile",verifyToken, verifyAdmin,  async (req, res) => {
       const email = req.query.email;
       const user = await usersCollection.findOne({ email });
 
