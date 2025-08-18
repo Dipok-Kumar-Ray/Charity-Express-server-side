@@ -1558,9 +1558,6 @@ app.post("/transactions", async (req, res) => {
 
 
 
-
-
-
     //  RESTAURANT ROUTES
 
     // Get user role
