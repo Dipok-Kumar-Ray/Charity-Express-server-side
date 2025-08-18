@@ -62,7 +62,7 @@ admin.initializeApp({
 
 async function run() {
   try {
-    await client.connect();
+    // await client.connect();
     const db = client.db("CharityEx_DB");
 
     // Collections
@@ -1714,6 +1714,16 @@ app.post('/requests', async (req, res) => {
   const requestData = req.body;
   // validation ...
   const result = await requestsCollection.insertOne(requestData);
+  res.send(result);
+});
+
+//LatestCharityRequests
+app.get("/requests/latest", async (req, res) => {
+  const result = await requestsCollection
+    .find()
+    .sort({ _id: -1 })
+    .limit(3)
+    .toArray();
   res.send(result);
 });
 
