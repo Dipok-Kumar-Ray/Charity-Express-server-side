@@ -1123,24 +1123,94 @@ app.patch("/charity-requests/reject/:id", async (req, res) => {
       res.send({ exists: !!result });
     });
 
-    // GET My Pickups
-    app.get("/charity/pickups", async (req, res) => {
-      const email = req.query.email;
-      const result = await requestsCollection
-        .find({ charityEmail: email, status: "Accepted" })
-        .toArray();
-      res.send(result);
-    });
+    // GET My Pickups start pickup🛻🛻🛻🛻🛻🛻🛻
+    
+//verifyFbToken, verifyEmail, 
+    app.get("/requests/pickups", async (req, res) => {
+  const email = req.query.email;
 
-    // PUT Confirm Pickup
-    app.put("/charity/pickups/:id", async (req, res) => {
-      const id = req.params.id;
-      const result = await requestsCollection.updateOne(
-        { _id: new ObjectId(id) },
-        { $set: { status: "Picked Up", pickupDate: new Date() } }
-      );
-      res.send(result);
-    });
+  try {
+    const filter = {
+      charityEmail: email,
+      status: "accepted",
+    };
+
+    const result = await requestsCollection
+      .find(filter)
+      .sort({ pickedUpAt: -1 })
+      .toArray();
+
+    res.send(result);
+  } catch (err) {
+    console.error("Error fetching picked-up requests:", err);
+    res.status(500).send({ message: "Failed to fetch picked up requests" });
+  }
+});
+//verifyFbToken,verifyCharity,
+app.patch("/requests/picked-up/:reqId",  async (req, res) => {
+  const reqId = req.params.reqId;
+  const { donationId } = req.body;
+  const requestUpdate = await requestsCollection.updateOne(
+    { _id: new ObjectId(reqId) },
+    { $set: { status: "Picked Up", pickupTime: new Date().toISOString() } }
+  );
+  const donationUpdate = await donationsCollection.updateOne(
+    { _id: new ObjectId(donationId) },
+    { $set: { donationStatus: "Picked Up" } }
+  );
+  res.send({
+    modifiedCount: requestUpdate.modifiedCount + donationUpdate.modifiedCount,
+    message: "Pickup confirmed",
+  });
+});
+
+
+
+    // end pickup🛻🛻🛻🛻🛻🛻🛻
+
+    
+// received donations start👌👌👌👌👌👌👌👌
+//verifyFbToken, verifyEmail,verifyCharity,
+app.get("/requests/received",  async (req, res) => {
+  const email = req.query.email;
+  if (!email) {
+    return res.status(400).send({ message: "Email is required" });
+  }
+  const result = await requestsCollection
+    .find({ charityEmail: email, status: "Picked Up" })
+    .sort({ requestedAt: -1 })
+    .toArray();
+  res.send(result);
+});
+app.get("/requests/latest", async (req, res) => {
+  const result = await requestsCollection
+    .find()
+    .sort({ _id: -1 })
+    .limit(3)
+    .toArray();
+  res.send(result);
+});
+
+// received donaions ends👌👌👌👌👌
+
+
+    // app.get("/charity/pickups", async (req, res) => {
+    //   const email = req.query.email;
+    //   const result = await requestsCollection
+    //     .find({ charityEmail: email, status: "Accepted" })
+    //     .toArray();
+    //   res.send(result);
+    // });
+
+    // // PUT Confirm Pickup
+    // app.put("/charity/pickups/:id", async (req, res) => {
+    //   const id = req.params.id;
+    //   const result = await requestsCollection.updateOne(
+    //     { _id: new ObjectId(id) },
+    //     { $set: { status: "Picked Up", pickupDate: new Date() } }
+    //   );
+    //   res.send(result);
+    // });
 
     // GET Received Donations
     app.get("/charity/received", async (req, res) => {
