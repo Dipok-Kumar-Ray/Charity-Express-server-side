@@ -15,6 +15,7 @@ const port = process.env.PORT || 3000;
 // app.use(cors());
 app.use(express.json());
 
+
 const allowedOrigins = [
   'http://localhost:5173',
   'https://charity-express-d807c.web.app'
@@ -76,8 +77,7 @@ async function run() {
     const charityCollection = db.collection("charity");
     const cardRequest=db.collection("card");
     const featuredCollection = db.collection("featured");
-
-    // Verify Restaurant Middleware
+    const pickupRequestsCollection = db.collection("pickupRequests");    // Verify Restaurant Middleware
   // verifyToken middleware
 
 
@@ -1126,43 +1126,69 @@ app.patch("/charity-requests/reject/:id", async (req, res) => {
     // GET My Pickups start pickup🛻🛻🛻🛻🛻🛻🛻
     
 //verifyFbToken, verifyEmail, 
-    app.get("/requests/pickups", async (req, res) => {
-  const email = req.query.email;
-
+// ---------------- GET My Pickups ----------------
+app.get("/requests/pickups", async (req, res) => {
   try {
-    const filter = {
-      charityEmail: email,
-      status: "accepted",
-    };
+    const email = req.query.email;
+    if (!email) return res.status(400).send({ error: "Email required" });
 
-    const result = await requestsCollection
-      .find(filter)
-      .sort({ pickedUpAt: -1 })
+    const pickups = await pickupRequestsCollection
+      .find({ charityEmail: email, status: "Accepted" })
+      .sort({ pickupTime: -1 })
       .toArray();
 
-    res.send(result);
+    res.send(pickups);
   } catch (err) {
-    console.error("Error fetching picked-up requests:", err);
-    res.status(500).send({ message: "Failed to fetch picked up requests" });
+    console.error(err);
+    res.status(500).send({ error: "Failed to fetch pickups" });
   }
 });
-//verifyFbToken,verifyCharity,
-app.patch("/requests/picked-up/:reqId",  async (req, res) => {
-  const reqId = req.params.reqId;
-  const { donationId } = req.body;
-  const requestUpdate = await requestsCollection.updateOne(
-    { _id: new ObjectId(reqId) },
-    { $set: { status: "Picked Up", pickupTime: new Date().toISOString() } }
-  );
-  const donationUpdate = await donationsCollection.updateOne(
-    { _id: new ObjectId(donationId) },
-    { $set: { donationStatus: "Picked Up" } }
-  );
-  res.send({
-    modifiedCount: requestUpdate.modifiedCount + donationUpdate.modifiedCount,
-    message: "Pickup confirmed",
-  });
+
+// ---------------- GET Pickup History ----------------
+app.get("/requests/pickup-history", async (req, res) => {
+  try {
+    const email = req.query.email;
+    if (!email) return res.status(400).send({ error: "Email required" });
+
+    const history = await pickupRequestsCollection
+      .find({ charityEmail: email, status: "Picked Up" })
+      .sort({ pickupTime: -1 })
+      .toArray();
+
+    res.send(history);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ error: "Failed to fetch history" });
+  }
 });
+
+// ---------------- PATCH Confirm Pickup ----------------
+app.patch("/requests/picked-up/:reqId", async (req, res) => {
+  try {
+    const { reqId } = req.params;
+    const { donationId } = req.body;
+
+    const reqUpdate = await pickupRequestsCollection.updateOne(
+      { _id: new ObjectId(reqId) },
+      { $set: { status: "Picked Up", pickupTime: new Date().toISOString() } }
+    );
+
+    const donationUpdate = await donationsCollection.updateOne(
+      { _id: new ObjectId(donationId) },
+      { $set: { donationStatus: "Picked Up" } }
+    );
+
+    res.send({
+      success: true,
+      message: "Pickup confirmed",
+      modifiedCount: reqUpdate.modifiedCount + donationUpdate.modifiedCount,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ error: "Failed to confirm pickup" });
+  }
+});
+
 
 
 
